@@ -46,18 +46,16 @@ if ( ! class_exists( 'GHU_Core' ) ) {
             $plugin_data = array();
             $plugins = get_plugins();
             foreach ( $plugins as $plugin_file => $info ) {
-                if ( isset( $this->active_plugins[ $plugin_file ] ) && ! empty( $info['GitHub URI'] ) ) {
-                    // TODO check slug for plugin without dir (no clear relation between plugin_file and slug in WP)
-                    $temp = array(
-                        'plugin'            => $plugin_file,
-                        'slug'              => trim( dirname( $plugin_file ), '/' ),
-                        'name'              => $info['Name'],
-                        'github_repo'       => $info['GitHub URI'],
-                        'description'       => $info['Description'],
-                    );
+                if ( isset( $this->active_plugins[ $plugin_file ] ) && ! empty( $info['GitHub Plugin URI'] ) ) {
+                    $header_parts = parse_url( $info['GitHub Plugin URI'] );
+                    $header_path = pathinfo( $header_parts['path'] );
+                    $host = isset( $header_parts['host'] ) ? $header_parts['host'] : null;
+                    $owner = trim( $header_path['dirname'], '/' );
+                    $repo = $header_path['filename'];
 
-                    // get plugin tags
-                    list( $owner, $repo ) = explode( '/', $temp['github_repo'] );
+                    if ( isset($host) && strtolower($host) != "github.com" )
+                        break;
+
                     $request = wp_remote_get( "https://api.github.com/repos/$owner/$repo/tags" );
 
                     // WP error or rate limit exceeded
@@ -69,10 +67,16 @@ if ( ! class_exists( 'GHU_Core' ) ) {
 
                     if ( is_array( $json ) && ! empty( $json ) ) {
                         $latest_tag = $json[0];
-                        $temp['new_version'] = $latest_tag['name'];
-                        $temp['url'] = "https://github.com/$owner/$repo/";
-                        $temp['package'] = $latest_tag['zipball_url'];
-                        $plugin_data[ $plugin_file ] = $temp;
+                        // TODO check slug for plugin without dir (no clear relation between plugin_file and slug in WP)
+                        $plugin_data[ $plugin_file ] = array(
+                            'plugin'            => $plugin_file,
+                            'slug'              => trim( dirname( $plugin_file ), '/' ),
+                            'name'              => $info['Name'],
+                            'description'       => $info['Description'],
+                            'new_version'       => $latest_tag['name'],
+                            'url'               => "https://github.com/$owner/$repo/",
+                            'package'           => $latest_tag['zipball_url']
+                        );
                     }
                 }
             }
@@ -146,7 +150,7 @@ if ( ! class_exists( 'GHU_Core' ) ) {
          * Parse the "GitHub URI" config too
          */
         function extra_plugin_headers( $headers ) {
-            $headers[] = 'GitHub URI';
+            $headers[] = 'GitHub Plugin URI';
             return $headers;
         }
     }
